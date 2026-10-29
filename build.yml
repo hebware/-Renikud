@@ -1,0 +1,54 @@
+
+name: Build Renikud EXE x64 - No Python Needed Locally
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-python-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download model
+        run: |
+          Invoke-WebRequest -Uri https://huggingface.co/renikud/renikud/resolve/main/model.onnx -OutFile model.onnx
+          dir
+      - name: Build EXE with PyInstaller (includes Python)
+        run: |
+          pip install renikud-onnx onnxruntime fastapi uvicorn pyinstaller
+          pyinstaller --onefile --add-data "model.onnx;." renikud_service.py -n renikud_service_x64.exe --clean
+          dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renikud-python-exe
+          path: dist/renikud_service_x64.exe
+
+  build-go-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Download ONNX Runtime
+        run: |
+          Invoke-WebRequest -Uri https://github.com/microsoft/onnxruntime/releases/download/v1.19.0/onnxruntime-win-x64-1.19.0.zip -OutFile ort.zip
+          Expand-Archive ort.zip -DestinationPath ort
+          Copy-Item ort\lib\onnxruntime.dll .
+          dir
+      - name: Build Go EXE
+        run: |
+          go mod tidy
+          go build -o renikud_go_x64.exe -ldflags="-s -w"
+          dir
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renikud-go-exe
+          path: |
+            renikud_go_x64.exe
+            onnxruntime.dll
