@@ -1,1 +1,15 @@
-
+name: Build
+on: [push]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: |
+          Invoke-WebRequest -Uri https://huggingface.co/renikud/renikud/resolve/main/model.onnx -OutFile model.onnx
+          pip install renikud-onnx onnxruntime fastapi uvicorn pyinstaller
+          pyinstaller --onefile --add-data "model.onnx;." renikud_service.py -n renikud_service_x64.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: exe, path: dist/renikud_service_x64.exe }
