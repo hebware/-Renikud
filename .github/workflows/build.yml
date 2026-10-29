@@ -1,18 +1,53 @@
 name: Build
 on: [push, workflow_dispatch]
 jobs:
-  build-python-exe:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Create Python service file
+        run: |
+          @"
+          from fastapi import FastAPI
+          from pydantic import BaseModel
+          import os
+          MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.onnx")
+          app = FastAPI()
+          class Req(BaseModel):
+              text: str
+          g2p = None
+          try:
+              from renikud_onnx import G2P
+              if os.path.exists(MODEL_PATH):
+                  g2p = G2P(MODEL_PATH)
+              else:
+                  g2p = G2P()
+          except Exception as e:
+              print(f"G2P load failed: {e}")
+          @app.post("/phonemize")
+          def phonemize(req: Req):
+              if g2p:
+                  return {"text": req.text, "phonemes": g2p.phonemize(req.text)}
+              return {"text": req.text, "phonemes": req.text}
+          @app.get("/")
+          def root():
+              return {"status": "ok"}
+          if __name__ == "__main__":
+              import uvicorn
+              uvicorn.run(app, host="127.0.0.1", port=8080)
+          "@ | Set-Content -Path renikud_service.py -Encoding UTF8
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Build EXE
         run: |
           Invoke-WebRequest -Uri https://huggingface.co/renikud/renikud/resolve/main/model.onnx -OutFile model.onnx
           pip install renikud-onnx onnxruntime fastapi uvicorn pyinstaller
-          pyinstaller --onefile --add-data "model.onnx;." renikud_service.py -n renikud_service_x64.exe --clean
+          pyinstaller --onefile --add-data "model.onnx;." renikud_service.py -n renikud_service_x64.exe --clean --noconfirm
+
       - uses: actions/upload-artifact@v4
         with:
           name: renikud-exe
